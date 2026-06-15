@@ -44,6 +44,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/rooms/*/join").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/rooms/*/leave").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/rooms/*/close").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/rooms/*/presence").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/rounds/*/submit-question").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/rounds/*/submit-answer").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/rounds/*/expire-time").permitAll()

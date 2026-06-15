@@ -95,4 +95,10 @@ public class RoomController {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
         }
     }
+
+    @PostMapping("/{code}/presence")
+    public ResponseEntity<Void> heartbeatPresence(@PathVariable String code, @RequestBody LeaveRoomRequest request) {
+        roomService.touchPresence(code, request.playerId());
+        return ResponseEntity.noContent().build();
+    }
 }

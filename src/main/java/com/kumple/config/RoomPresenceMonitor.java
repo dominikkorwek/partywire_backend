@@ -33,21 +33,29 @@ public class RoomPresenceMonitor {
     @Scheduled(fixedDelayString = "${app.presence-check-interval-ms}")
     public void evictInactivePlayers() {
         for (RoomService.DisconnectResult result : roomService.evictInactiveSessions(presenceTimeoutMs)) {
-            String destination = "/topic/room/" + result.roomCode().toUpperCase();
-            if (result.roomClosed()) {
-                messagingTemplate.convertAndSend(destination, Map.of("event", "ROOM_CLOSED"));
-                continue;
-            }
+            processDisconnectResult(result);
+        }
 
-            GameStateResponse gameState = gameService.handlePlayerDisconnected(result.roomCode(), result.playerId());
-            if (gameState != null) {
-                messagingTemplate.convertAndSend(destination, gameState);
-                continue;
-            }
+        for (RoomService.DisconnectResult result : roomService.evictInactivePresences(presenceTimeoutMs)) {
+            processDisconnectResult(result);
+        }
+    }
 
-            if (result.room() != null) {
-                messagingTemplate.convertAndSend(destination, RoomResponse.from(result.room()));
-            }
+    private void processDisconnectResult(RoomService.DisconnectResult result) {
+        String destination = "/topic/room/" + result.roomCode().toUpperCase();
+        if (result.roomClosed()) {
+            messagingTemplate.convertAndSend(destination, Map.of("event", "ROOM_CLOSED"));
+            return;
+        }
+
+        GameStateResponse gameState = gameService.handlePlayerDisconnected(result.roomCode(), result.playerId());
+        if (gameState != null) {
+            messagingTemplate.convertAndSend(destination, gameState);
+            return;
+        }
+
+        if (result.room() != null) {
+            messagingTemplate.convertAndSend(destination, RoomResponse.from(result.room()));
         }
     }
 }

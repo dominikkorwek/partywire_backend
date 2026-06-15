@@ -26,6 +26,7 @@ public class RoomService {
 
     // WebSocket session tracking stays in-memory (ephemeral data)
     private final Map<String, SessionInfo> sessionMap = new ConcurrentHashMap<>();
+    private final Map<String, PresenceInfo> presenceMap = new ConcurrentHashMap<>();
 
     public static final class SessionInfo {
         private final String roomCode;
@@ -54,6 +55,27 @@ public class RoomService {
             this.lastSeenAt = System.currentTimeMillis();
         }
     }
+    public static final class PresenceInfo {
+        private final String roomCode;
+        private volatile long lastSeenAt;
+
+        public PresenceInfo(String roomCode) {
+            this.roomCode = roomCode;
+            touch();
+        }
+
+        public String roomCode() {
+            return roomCode;
+        }
+
+        public long lastSeenAt() {
+            return lastSeenAt;
+        }
+
+        public void touch() {
+            this.lastSeenAt = System.currentTimeMillis();
+        }
+    }
     public record DisconnectResult(String roomCode, String playerId, boolean roomClosed, Room room) {}
 
     public RoomService(RoomRepository roomRepository) {
@@ -65,6 +87,7 @@ public class RoomService {
         if (hostAuthSubject != null) {
             roomRepository.findByHostAuthSubject(hostAuthSubject).ifPresent(oldRoom -> {
                 sessionMap.values().removeIf(s -> s.roomCode().equalsIgnoreCase(oldRoom.getCode()));
+                presenceMap.entrySet().removeIf(e -> e.getValue().roomCode().equalsIgnoreCase(oldRoom.getCode()));
                 roomRepository.delete(oldRoom);
             });
         }
@@ -111,11 +134,13 @@ public class RoomService {
 
         if (player.isHost()) {
             sessionMap.values().removeIf(s -> s.roomCode().equalsIgnoreCase(code));
+            presenceMap.entrySet().removeIf(e -> e.getValue().roomCode().equalsIgnoreCase(code));
             roomRepository.delete(room);
             return true;
         }
 
         room.removePlayer(playerId);
+        presenceMap.remove(playerId);
         roomRepository.save(room);
         return false;
     }
@@ -126,6 +151,7 @@ public class RoomService {
         Room room = roomRepository.findByCodeIgnoreCase(code)
                 .orElseThrow(() -> new IllegalArgumentException("Pokój o kodzie " + code + " nie istnieje"));
         sessionMap.values().removeIf(s -> s.roomCode().equalsIgnoreCase(code));
+        presenceMap.entrySet().removeIf(e -> e.getValue().roomCode().equalsIgnoreCase(code));
         roomRepository.delete(room);
     }
 
@@ -138,6 +164,19 @@ public class RoomService {
         if (session != null) {
             session.touch();
         }
+    }
+
+    public void touchPresence(String roomCode, String playerId) {
+        if (roomCode == null || roomCode.isBlank() || playerId == null || playerId.isBlank()) {
+            return;
+        }
+        presenceMap.compute(playerId, (key, current) -> {
+            if (current == null || !current.roomCode().equalsIgnoreCase(roomCode)) {
+                return new PresenceInfo(roomCode.toUpperCase());
+            }
+            current.touch();
+            return current;
+        });
     }
 
     public void unregisterSession(String sessionId) {
@@ -159,6 +198,34 @@ public class RoomService {
         List<DisconnectResult> results = new ArrayList<>();
         for (String sessionId : expiredSessionIds) {
             handleSessionDisconnect(sessionId).ifPresent(results::add);
+        }
+        return results;
+    }
+
+    @Transactional
+    public List<DisconnectResult> evictInactivePresences(long timeoutMs) {
+        long cutoff = System.currentTimeMillis() - timeoutMs;
+        List<Map.Entry<String, PresenceInfo>> expiredEntries = presenceMap.entrySet().stream()
+                .filter(entry -> entry.getValue().lastSeenAt() < cutoff)
+                .toList();
+
+        List<DisconnectResult> results = new ArrayList<>();
+        for (Map.Entry<String, PresenceInfo> entry : expiredEntries) {
+            String playerId = entry.getKey();
+            PresenceInfo removed = presenceMap.remove(playerId);
+            if (removed == null) {
+                continue;
+            }
+
+            boolean roomClosed = leaveRoom(removed.roomCode(), playerId);
+            if (roomClosed) {
+                results.add(new DisconnectResult(removed.roomCode(), playerId, true, null));
+                continue;
+            }
+
+            getRoom(removed.roomCode())
+                    .map(room -> new DisconnectResult(removed.roomCode(), playerId, false, room))
+                    .ifPresent(results::add);
         }
         return results;
     }
