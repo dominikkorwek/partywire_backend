@@ -8,6 +8,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,8 +27,34 @@ public class RoomService {
     // WebSocket session tracking stays in-memory (ephemeral data)
     private final Map<String, SessionInfo> sessionMap = new ConcurrentHashMap<>();
 
-    public record SessionInfo(String roomCode, String playerId) {}
-    public record DisconnectResult(String roomCode, boolean roomClosed, Room room) {}
+    public static final class SessionInfo {
+        private final String roomCode;
+        private final String playerId;
+        private volatile long lastSeenAt;
+
+        public SessionInfo(String roomCode, String playerId) {
+            this.roomCode = roomCode;
+            this.playerId = playerId;
+            touch();
+        }
+
+        public String roomCode() {
+            return roomCode;
+        }
+
+        public String playerId() {
+            return playerId;
+        }
+
+        public long lastSeenAt() {
+            return lastSeenAt;
+        }
+
+        public void touch() {
+            this.lastSeenAt = System.currentTimeMillis();
+        }
+    }
+    public record DisconnectResult(String roomCode, String playerId, boolean roomClosed, Room room) {}
 
     public RoomService(RoomRepository roomRepository) {
         this.roomRepository = roomRepository;
@@ -105,12 +133,34 @@ public class RoomService {
         sessionMap.put(sessionId, new SessionInfo(roomCode.toUpperCase(), playerId));
     }
 
+    public void touchSession(String sessionId) {
+        SessionInfo session = sessionMap.get(sessionId);
+        if (session != null) {
+            session.touch();
+        }
+    }
+
     public void unregisterSession(String sessionId) {
         sessionMap.remove(sessionId);
     }
 
     public Optional<SessionInfo> getSession(String sessionId) {
         return Optional.ofNullable(sessionMap.get(sessionId));
+    }
+
+    @Transactional
+    public List<DisconnectResult> evictInactiveSessions(long timeoutMs) {
+        long cutoff = System.currentTimeMillis() - timeoutMs;
+        List<String> expiredSessionIds = sessionMap.entrySet().stream()
+                .filter(entry -> entry.getValue().lastSeenAt() < cutoff)
+                .map(Map.Entry::getKey)
+                .toList();
+
+        List<DisconnectResult> results = new ArrayList<>();
+        for (String sessionId : expiredSessionIds) {
+            handleSessionDisconnect(sessionId).ifPresent(results::add);
+        }
+        return results;
     }
 
     @Transactional
@@ -133,11 +183,11 @@ public class RoomService {
 
         boolean roomClosed = leaveRoom(session.roomCode(), session.playerId());
         if (roomClosed) {
-            return Optional.of(new DisconnectResult(session.roomCode(), true, null));
+            return Optional.of(new DisconnectResult(session.roomCode(), session.playerId(), true, null));
         }
 
         return getRoom(session.roomCode())
-                .map(room -> new DisconnectResult(session.roomCode(), false, room));
+                .map(room -> new DisconnectResult(session.roomCode(), session.playerId(), false, room));
     }
 
     @Transactional(readOnly = true)

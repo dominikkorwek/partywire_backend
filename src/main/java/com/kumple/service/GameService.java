@@ -119,6 +119,25 @@ public class GameService {
     }
 
     @Transactional
+    public GameStateResponse handlePlayerDisconnected(String roomCode, String playerId) {
+        GameSession session = gameSessionRepository.findByRoomCodeIgnoreCase(roomCode).orElse(null);
+        if (session == null || session.getStatus() != GameStatus.IN_PROGRESS || session.getCurrentRound() == null) {
+            return null;
+        }
+
+        RoundService.PlayerRemovalAction action = roundService.handlePlayerRemoved(session.getCurrentRound(), playerId);
+        if (action == RoundService.PlayerRemovalAction.NONE) {
+            return null;
+        }
+
+        if (action == RoundService.PlayerRemovalAction.ADVANCE_TO_NEXT_ROUND) {
+            roundService.createNextRound(session);
+        }
+
+        return toState(getSession(roomCode));
+    }
+
+    @Transactional
     public GameStateResponse getState(String roomCode) {
         GameSession session = getSession(roomCode);
         if (session.getCurrentRound() != null) {

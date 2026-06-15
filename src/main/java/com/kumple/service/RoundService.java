@@ -28,6 +28,11 @@ import java.util.stream.Collectors;
 
 @Service
 public class RoundService {
+    public enum PlayerRemovalAction {
+        NONE,
+        ROUND_UPDATED,
+        ADVANCE_TO_NEXT_ROUND
+    }
 
     private final RoundRepository roundRepository;
     private final AnswerRepository answerRepository;
@@ -245,6 +250,55 @@ public class RoundService {
     @Transactional(readOnly = true)
     public String getRoomCode(Long roundId) {
         return getRound(roundId).getGameSession().getRoom().getCode();
+    }
+
+    @Transactional
+    public PlayerRemovalAction handlePlayerRemoved(Round round, String removedPlayerId) {
+        if (round == null || round.getCompletedAt() != null || removedPlayerId == null || removedPlayerId.isBlank()) {
+            return PlayerRemovalAction.NONE;
+        }
+
+        boolean selectedPlayerLeft = round.getSelectedPlayer() != null
+                && removedPlayerId.equals(round.getSelectedPlayer().getPlayerId());
+
+        if (round.getStatus() == RoundStatus.WAITING_FOR_QUESTION && selectedPlayerLeft) {
+            round.setStatus(RoundStatus.COMPLETED);
+            round.setCompletedAt(Instant.now());
+            roundRepository.save(round);
+            gameSessionRepository.save(round.getGameSession());
+            return PlayerRemovalAction.ADVANCE_TO_NEXT_ROUND;
+        }
+
+        if (round.getStatus() == RoundStatus.WAITING_FOR_ANSWERS) {
+            if (round.getRoundType() == RoundType.BEST_ANSWER && selectedPlayerLeft) {
+                completeRound(round);
+                roundRepository.save(round);
+                return PlayerRemovalAction.ROUND_UPDATED;
+            }
+
+            if (round.getRoundType() == RoundType.BEST_ANSWER && hasAllExpectedAnswers(round)) {
+                round.setStatus(RoundStatus.REVEALING);
+                beginAnswerPhase(round);
+                roundRepository.save(round);
+                return PlayerRemovalAction.ROUND_UPDATED;
+            }
+
+            if (round.getRoundType() != RoundType.BEST_ANSWER && hasAllExpectedAnswers(round)) {
+                completeRound(round);
+                roundRepository.save(round);
+                return PlayerRemovalAction.ROUND_UPDATED;
+            }
+        }
+
+        if (round.getStatus() == RoundStatus.REVEALING
+                && round.getRoundType() == RoundType.BEST_ANSWER
+                && selectedPlayerLeft) {
+            completeRound(round);
+            roundRepository.save(round);
+            return PlayerRemovalAction.ROUND_UPDATED;
+        }
+
+        return PlayerRemovalAction.NONE;
     }
 
     private RoundResponse chooseBestAnswer(Round round, Player player, Long selectedAnswerId) {

@@ -48,3 +48,5 @@ spring:
 app:
   allowed-origins: ${ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000}
   frontend-url: ${FRONTEND_URL:http://localhost:5173}
+  presence-timeout-ms: ${PRESENCE_TIMEOUT_MS:25000}
+  presence-check-interval-ms: ${PRESENCE_CHECK_INTERVAL_MS:10000}

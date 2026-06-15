@@ -28,4 +28,12 @@ public class WebSocketController {
             roomService.registerSession(sessionId, roomCode, playerId);
         }
     }
+
+    @MessageMapping("/heartbeat")
+    public void heartbeat(SimpMessageHeaderAccessor headerAccessor) {
+        String sessionId = headerAccessor.getSessionId();
+        if (sessionId != null) {
+            roomService.touchSession(sessionId);
+        }
+    }
 }
