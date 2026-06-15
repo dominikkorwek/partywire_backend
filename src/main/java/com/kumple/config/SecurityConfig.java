@@ -18,9 +18,14 @@ import java.util.List;
 @EnableWebSecurity
 public class SecurityConfig {
     private final String[] allowedOrigins;
+    private final String frontendUrl;
 
-    public SecurityConfig(@Value("${app.allowed-origins}") String[] allowedOrigins) {
+    public SecurityConfig(
+            @Value("${app.allowed-origins}") String[] allowedOrigins,
+            @Value("${app.frontend-url}") String frontendUrl
+    ) {
         this.allowedOrigins = allowedOrigins;
+        this.frontendUrl = frontendUrl;
     }
 
     @Bean
@@ -49,8 +54,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/rooms/*/reset-lobby").permitAll()
                 .anyRequest().authenticated()
             )
-            .oauth2Login(oauth2 -> oauth2.defaultSuccessUrl("http://localhost:5173", true))
-            .logout(logout -> logout.logoutSuccessUrl("http://localhost:5173"));
+            .oauth2Login(oauth2 -> oauth2.defaultSuccessUrl(frontendUrl, true))
+            .logout(logout -> logout.logoutSuccessUrl(frontendUrl));
         return http.build();
     }
 
