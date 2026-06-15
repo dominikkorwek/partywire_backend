@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: partywire-backend
+    runtime: docker
+    plan: free
+    autoDeploy: true

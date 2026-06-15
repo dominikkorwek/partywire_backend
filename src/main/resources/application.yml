@@ -1,5 +1,6 @@
 server:
   port: ${PORT:8081}
+  forward-headers-strategy: framework
 
 spring:
   config:
@@ -17,7 +18,7 @@ spring:
     defer-datasource-initialization: true
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
-      ddl-auto: update
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
     open-in-view: false
     properties:
       hibernate:
@@ -25,7 +26,7 @@ spring:
 
   sql:
     init:
-      mode: always
+      mode: ${SPRING_SQL_INIT_MODE:always}
 
   security:
     oauth2:
