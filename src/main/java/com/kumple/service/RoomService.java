@@ -26,6 +26,7 @@ public class RoomService {
     private final Map<String, SessionInfo> sessionMap = new ConcurrentHashMap<>();
 
     public record SessionInfo(String roomCode, String playerId) {}
+    public record DisconnectResult(String roomCode, boolean roomClosed, Room room) {}
 
     public RoomService(RoomRepository roomRepository) {
         this.roomRepository = roomRepository;
@@ -110,6 +111,33 @@ public class RoomService {
 
     public Optional<SessionInfo> getSession(String sessionId) {
         return Optional.ofNullable(sessionMap.get(sessionId));
+    }
+
+    @Transactional
+    public Optional<DisconnectResult> handleSessionDisconnect(String sessionId) {
+        SessionInfo session = sessionMap.remove(sessionId);
+        if (session == null) {
+            return Optional.empty();
+        }
+
+        boolean hasAnotherActiveSession = sessionMap.entrySet().stream()
+                .anyMatch(entry ->
+                        !entry.getKey().equals(sessionId)
+                                && entry.getValue().roomCode().equalsIgnoreCase(session.roomCode())
+                                && entry.getValue().playerId().equals(session.playerId())
+                );
+
+        if (hasAnotherActiveSession) {
+            return Optional.empty();
+        }
+
+        boolean roomClosed = leaveRoom(session.roomCode(), session.playerId());
+        if (roomClosed) {
+            return Optional.of(new DisconnectResult(session.roomCode(), true, null));
+        }
+
+        return getRoom(session.roomCode())
+                .map(room -> new DisconnectResult(session.roomCode(), false, room));
     }
 
     @Transactional(readOnly = true)
