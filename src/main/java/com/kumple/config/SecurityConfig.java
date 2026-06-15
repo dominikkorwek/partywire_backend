@@ -54,7 +54,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/rooms/*/reset-lobby").permitAll()
                 .anyRequest().authenticated()
             )
-            .oauth2Login(oauth2 -> oauth2.defaultSuccessUrl(frontendUrl, true))
+            .oauth2Login(oauth2 -> oauth2.defaultSuccessUrl(frontendUrl + "/create-room", true))
             .logout(logout -> logout.logoutSuccessUrl(frontendUrl));
         return http.build();
     }
