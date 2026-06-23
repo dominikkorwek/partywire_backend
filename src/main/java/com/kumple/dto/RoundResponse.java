@@ -4,6 +4,7 @@ import com.kumple.model.Round;
 import com.kumple.model.enums.RoundStatus;
 import com.kumple.model.enums.RoundType;
 
+import java.util.Comparator;
 import java.util.List;
 
 public record RoundResponse(
@@ -16,6 +17,7 @@ public record RoundResponse(
         AnswerResponse winningAnswer,
         List<AnswerResponse> answers,
         boolean tiebreakRevote,
+        String answerPhaseStartedAt,
         List<PlayerAnswerResponse> playerAnswers
 ) {
     public static RoundResponse from(Round round) {
@@ -36,8 +38,12 @@ public record RoundResponse(
                 round.getWinningAnswer() != null ? AnswerResponse.from(round.getWinningAnswer(), status) : null,
                 hideAnswers
                         ? List.of()
-                        : round.getAnswers().stream().map(a -> AnswerResponse.from(a, status)).toList(),
+                        : round.getAnswers().stream()
+                                .sorted(Comparator.comparing(a -> a.getId() != null ? a.getId() : Long.MAX_VALUE))
+                                .map(a -> AnswerResponse.from(a, status))
+                                .toList(),
                 round.isTiebreakRevote(),
+                round.getAnswerPhaseStartedAt() != null ? round.getAnswerPhaseStartedAt().toString() : null,
                 playerAnswers != null ? playerAnswers : List.of()
         );
     }
